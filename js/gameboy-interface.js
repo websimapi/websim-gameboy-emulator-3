@@ -1,6 +1,6 @@
 // Interface with GameboyJS library
 import { getAudioContext, tryEnableAudio, checkAudioContext } from './audio.js';
-import { enableButtons, hideSoundNotification, hideOverlay } from './ui.js';
+import { enableButtons, hideSoundNotification, hideOverlay, showError } from './ui.js';
 
 // GameBoy instance
 let gameboy = null;
@@ -110,27 +110,61 @@ function loadROM(file) {
     pauseBtn.textContent = 'Pause';
     enableButtons();
     
+    // Reset any previous error messages
+    showError('', false);
+    
     // Make sure we have a handler for reading the file
     const reader = new FileReader();
     reader.onload = function(e) {
         const romData = new Uint8Array(e.target.result);
         
-        // Load the ROM data into the gameboy
-        if (gameboy && gameboy.cpu) {
-            gameboy.cpu.loadRom(romData);
-            gameboy.startRom({ data: romData });
-            
-            // Enable sound by default
-            gameboy.setSoundEnabled(true);
-            
-            // Check for audio context state after ROM is loaded
-            setTimeout(() => {
-                try {
-                    checkAudioContext();
-                } catch (e) {
-                    console.error("Error checking audio context:", e);
-                }
-            }, 100);
+        try {
+            // Load the ROM data into the gameboy
+            if (gameboy && gameboy.cpu) {
+                gameboy.cpu.loadRom(romData);
+                
+                // Add error handler for cartridge clock not supported
+                const originalStartRom = gameboy.startRom;
+                gameboy.startRom = function(options) {
+                    try {
+                        originalStartRom.call(this, options);
+                    } catch (err) {
+                        console.error("ROM loading error:", err);
+                        
+                        // Handle "cartridge clock not supported" error
+                        if (err.message && err.message.includes("cartridge clock not supported")) {
+                            showError(`This game uses a Real-Time Clock feature which is not fully supported. The game may still work but time-based events might not function correctly.`, true);
+                            
+                            // Continue with ROM loading if possible
+                            try {
+                                this.reset();
+                                this.cpu.loadRom(options.data);
+                                this.start();
+                            } catch (e) {
+                                console.error("Failed to recover from clock error:", e);
+                                showError(`Failed to load the ROM: ${e.message}`, true);
+                            }
+                        } else {
+                            showError(`Failed to load the ROM: ${err.message}`, true);
+                        }
+                    }
+                };
+                
+                gameboy.startRom({ data: romData });
+                gameboy.setSoundEnabled(true);
+                
+                // Check for audio context state after ROM is loaded
+                setTimeout(() => {
+                    try {
+                        checkAudioContext();
+                    } catch (e) {
+                        console.error("Error checking audio context:", e);
+                    }
+                }, 100);
+            }
+        } catch (err) {
+            console.error("Error loading ROM:", err);
+            showError(`Error loading ROM: ${err.message}`, true);
         }
     };
     
