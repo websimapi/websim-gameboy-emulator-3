@@ -70,15 +70,14 @@ document.addEventListener('DOMContentLoaded', () => {
         activateAudio();
     }, { once: true });
     
-    // Set initial emulation speed to normal (1.0x)
-    // This is a solution to the reported "running at 2x speed" issue
+    // Force initial emulation speed to normal (1.0x)
     window.addEventListener('load', () => {
-        // Delay to ensure gameboy is initialized if loaded from a previous state
+        // Initialize with proper speed and apply after a slight delay to ensure everything is loaded
         setTimeout(() => {
-            if (gameboy) {
+            if (window.gameboy) {
                 setEmulationSpeed(1.0);
             }
-        }, 500);
+        }, 300);
     });
     
     // Make loadROM globally accessible

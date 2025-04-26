@@ -7,6 +7,7 @@ let gameboy = null;
 let currentSpeed = 1.0;
 let errorCount = 0;
 let lastErrorTime = 0;
+let isRunningFast = false;
 
 // MBC3 cartridge clock handling patch
 // Apply a patch to the MBC3 implementation to handle clock operations
@@ -75,6 +76,95 @@ function applyMBC3ClockPatch() {
     }
 }
 
+// Fix for emulation timing issues
+function patchTimingSystem() {
+    if (GameboyJS && GameboyJS.Screen) {
+        // Make sure we're using the right frequency
+        GameboyJS.Screen.physics.FREQUENCY = 59.73; // Correct GameBoy framerate
+    }
+    
+    // Fix APU timing issues
+    if (GameboyJS && GameboyJS.APU && GameboyJS.APU.prototype) {
+        const originalChannelUpdate = GameboyJS.Channel1.prototype.update;
+        if (originalChannelUpdate) {
+            GameboyJS.Channel1.prototype.update = function(clockElapsed) {
+                // Adjust clock elapsed based on speed to maintain consistent sound
+                const adjustedClock = clockElapsed / currentSpeed;
+                originalChannelUpdate.call(this, adjustedClock);
+            };
+        }
+        
+        // Same for Channel3
+        const originalChannel3Update = GameboyJS.Channel3.prototype.update;
+        if (originalChannel3Update) {
+            GameboyJS.Channel3.prototype.update = function(clockElapsed) {
+                const adjustedClock = clockElapsed / currentSpeed;
+                originalChannel3Update.call(this, adjustedClock);
+            };
+        }
+    }
+    
+    // Patch CPU update timing function
+    if (GameboyJS && GameboyJS.CPU && GameboyJS.CPU.prototype) {
+        const originalFrame = GameboyJS.CPU.prototype.frame;
+        if (originalFrame) {
+            GameboyJS.CPU.prototype.frame = function() {
+                if (!this.isPaused) {
+                    // Use the correct frequency and ensure consistent timing
+                    const frequency = GameboyJS.Screen.physics.FREQUENCY;
+                    // Adjust frameTime based on speed but cap max speed
+                    const frameTime = 1000 / (frequency * Math.min(currentSpeed, 2.0));
+                    
+                    this.nextFrameTimer = setTimeout(this.frame.bind(this), frameTime);
+                }
+                
+                try {
+                    var vblank = false;
+                    // For higher speeds, we need to execute more instructions per frame
+                    // to maintain proper emulation
+                    const cyclesPerFrame = currentSpeed > 1.0 ? Math.floor(70224 * (currentSpeed / 1.0)) : 70224;
+                    let currentCycles = 0;
+                    
+                    while (!vblank && currentCycles < cyclesPerFrame) {
+                        var oldInstrCount = this.clock.c;
+                        if (!this.isHalted) {
+                            var opcode = this.fetchOpcode();
+                            GameboyJS.opcodeMap[opcode](this);
+                            this.r.F &= 0xF0; // tmp fix
+
+                            if (this.enableSerial) {
+                                var instr = this.clock.c - oldInstrCount;
+                                this.clock.serial += instr;
+                                if (this.clock.serial >= 8 * this.SERIAL_INTERNAL_INSTR) {
+                                    this.endSerialTransfer();
+                                }
+                            }
+                        } else {
+                            this.clock.c += 4;
+                        }
+
+                        var elapsed = this.clock.c - oldInstrCount;
+                        vblank = this.gpu.update(elapsed);
+                        this.timer.update(elapsed);
+                        this.input.update();
+                        this.apu.update(elapsed);
+                        this.checkInterrupt();
+                        
+                        currentCycles += elapsed;
+                    }
+                    this.clock.c = 0;
+                } catch (e) {
+                    console.warn("Recovered from error in CPU execution:", e);
+                    if (e.fatal) {
+                        this.isPaused = true;
+                        console.error("Fatal error, pausing emulation", e);
+                    }
+                }
+            };
+        }
+    }
+}
+
 // Initialize the gameboy with proper audio context handling
 function initGameboy() {
     const canvas = document.getElementById('canvas');
@@ -88,6 +178,9 @@ function initGameboy() {
     // Apply the MBC3 clock patch to handle cartridges with RTC
     applyMBC3ClockPatch();
     
+    // Apply timing patches
+    patchTimingSystem();
+    
     // Explicitly associate the AudioContext with the gameboy APU
     const audioCtx = getAudioContext();
     if (audioCtx && gameboy && gameboy.cpu && gameboy.cpu.apu) {
@@ -97,7 +190,7 @@ function initGameboy() {
     hideOverlay();
     
     // Set initial speed
-    setEmulationSpeed(currentSpeed);
+    setEmulationSpeed(1.0);
     
     // Add error handling wrapper for the frame function
     if (gameboy.cpu) {
@@ -106,8 +199,8 @@ function initGameboy() {
             try {
                 if (!this.isPaused) {
                     // Adjust timeout based on speed (higher speed = shorter timeout)
-                    const frequency = GameboyJS.Screen.physics.FREQUENCY * currentSpeed;
-                    this.nextFrameTimer = setTimeout(this.frame.bind(this), 1000 / frequency);
+                    const frequency = GameboyJS.Screen.physics.FREQUENCY;
+                    this.nextFrameTimer = setTimeout(this.frame.bind(this), 1000 / (frequency * currentSpeed));
                 }
                 
                 try {
@@ -183,13 +276,37 @@ function initGameboy() {
 function setEmulationSpeed(speed) {
     if (!gameboy || !gameboy.cpu) return;
     
+    // Limit speed to a reasonable range
     currentSpeed = Math.max(0.5, Math.min(2.0, speed));
+    
+    // Adjust audio playback rate to match emulation speed if audio is supported
+    if (gameboy.cpu.apu && gameboy.cpu.apu.channel1 && gameboy.cpu.apu.channel1.oscillator) {
+        try {
+            // Adjust oscillator playback rate based on speed
+            if (gameboy.cpu.apu.channel1.bufferSource) {
+                gameboy.cpu.apu.channel1.bufferSource.playbackRate.value = currentSpeed;
+            }
+            if (gameboy.cpu.apu.channel2 && gameboy.cpu.apu.channel2.bufferSource) {
+                gameboy.cpu.apu.channel2.bufferSource.playbackRate.value = currentSpeed;
+            }
+            if (gameboy.cpu.apu.channel3 && gameboy.cpu.apu.channel3.bufferSource) {
+                const currentRate = gameboy.cpu.apu.channel3.bufferSource.playbackRate.value;
+                const baseRate = currentRate / (isRunningFast ? 2.0 : 1.0);
+                gameboy.cpu.apu.channel3.bufferSource.playbackRate.value = baseRate * currentSpeed;
+            }
+        } catch (e) {
+            console.warn("Could not adjust audio playback rate:", e);
+        }
+    }
     
     // Update speed display
     const speedDisplay = document.getElementById('speedDisplay');
     if (speedDisplay) {
         speedDisplay.textContent = `${currentSpeed.toFixed(1)}x`;
     }
+    
+    // Update isRunningFast flag for future reference
+    isRunningFast = currentSpeed > 1.0;
 }
 
 // Speed adjustment functions
@@ -235,6 +352,9 @@ function loadROM(file) {
             try {
                 gameboy.cpu.loadRom(romData);
                 gameboy.startRom({ data: romData });
+                
+                // Make sure to set speed to 1.0x when loading a new ROM
+                setEmulationSpeed(1.0);
                 
                 // Enable sound by default
                 gameboy.setSoundEnabled(true);

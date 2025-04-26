@@ -6,6 +6,15 @@ let audioContext = null;
 
 function initAudio() {
     // We'll create the actual context on user interaction to comply with browser policies
+    try {
+        // Just check if AudioContext is available, but don't create it yet
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) {
+            console.warn("AudioContext not supported in this browser");
+        }
+    } catch (e) {
+        console.error("Error checking AudioContext support:", e);
+    }
 }
 
 // Check if AudioContext is suspended and show UI accordingly
@@ -47,6 +56,10 @@ function activateAudio() {
         if (!audioContext) {
             // Create a new AudioContext (handles prefixes automatically)
             const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) {
+                console.warn("AudioContext not supported in this browser");
+                return;
+            }
             audioContext = new AudioContextClass();
         }
         
