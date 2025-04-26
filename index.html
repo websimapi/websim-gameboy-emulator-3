@@ -304,8 +304,17 @@
                 pauseBtn.textContent = 'Pause';
                 enableButtons();
                 
-                // Enable sound by default
-                gameboy.setSoundEnabled(isSoundEnabled);
+                // Ensure sound is properly initialized when loading a ROM
+                if (isSoundEnabled) {
+                    gameboy.setSoundEnabled(true);
+                    
+                    // Force sound context to be active by handling user interaction
+                    const resumeAudio = function() {
+                        gameboy.setSoundEnabled(isSoundEnabled);
+                        document.removeEventListener('click', resumeAudio);
+                    };
+                    document.addEventListener('click', resumeAudio, {once: true});
+                }
             }
         });
         
