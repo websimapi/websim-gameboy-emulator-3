@@ -13,8 +13,27 @@ function initAudio() {
 function checkAudioContext() {
     try {
         // Find any existing AudioContext in the window
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        
+        // Look for the gameboy's AudioContext first
+        if (window.gameboy && window.gameboy.cpu && window.gameboy.cpu.apu && window.gameboy.cpu.apu.audioContext) {
+            audioContext = window.gameboy.cpu.apu.audioContext;
+            
+            if (audioContext.state === 'suspended') {
+                showSoundNotification();
+            }
+            return;
+        }
+        
+        // Fallback to searching window properties (safer approach)
         const audioContexts = Object.keys(window)
-            .filter(key => window[key] instanceof AudioContext || window[key] instanceof webkitAudioContext)
+            .filter(key => {
+                try {
+                    return window[key] instanceof AudioContextClass;
+                } catch (e) {
+                    return false;
+                }
+            })
             .map(key => window[key]);
         
         if (audioContexts.length > 0) {
@@ -49,8 +68,10 @@ function resumeAudioContext() {
 
 // Function to handle user interaction and enable audio
 function activateAudio() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    
     // Create a temporary AudioContext to ensure permission
-    const tempContext = new (window.AudioContext || window.webkitAudioContext)();
+    const tempContext = new AudioContextClass();
     tempContext.resume().then(() => {
         // Permission granted, initialize the gameboy
         if (!window.gameboy) {
