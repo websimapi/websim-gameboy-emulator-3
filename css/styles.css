@@ -219,3 +219,21 @@ body {
     cursor: pointer;
 }
 
+.speed-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.speed-btn {
+    background-color: #4a6bff;
+    padding: 4px 10px;
+}
+
+#speedDisplay {
+    font-weight: bold;
+    min-width: 40px;
+    text-align: center;
+}
+

@@ -1,7 +1,7 @@
 // Main application file
 import { setupUI, adjustCanvasZoom } from './ui.js';
 import { initAudio, tryEnableAudio, activateAudio } from './audio.js';
-import { initGameboy, loadROM } from './gameboy-interface.js';
+import { initGameboy, loadROM, setEmulationSpeed } from './gameboy-interface.js';
 
 // Application state
 let gameboy = null;
@@ -39,6 +39,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.code === 'Space') {
             e.preventDefault();
         }
+        
+        // Add keyboard shortcuts for speed control
+        if (e.code === 'Equal' || e.code === 'NumpadAdd') { // + key
+            e.preventDefault();
+            import('./gameboy-interface.js').then(module => module.increaseSpeed());
+        }
+        if (e.code === 'Minus' || e.code === 'NumpadSubtract') { // - key
+            e.preventDefault();
+            import('./gameboy-interface.js').then(module => module.decreaseSpeed());
+        }
+        if (e.code === 'Digit0' || e.code === 'Numpad0') { // 0 key
+            e.preventDefault();
+            import('./gameboy-interface.js').then(module => module.resetSpeed());
+        }
+        
         tryEnableAudio();
     });
 
@@ -54,6 +69,17 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('click', () => {
         activateAudio();
     }, { once: true });
+    
+    // Set initial emulation speed to normal (1.0x)
+    // This is a solution to the reported "running at 2x speed" issue
+    window.addEventListener('load', () => {
+        // Delay to ensure gameboy is initialized if loaded from a previous state
+        setTimeout(() => {
+            if (gameboy) {
+                setEmulationSpeed(1.0);
+            }
+        }, 500);
+    });
     
     // Make loadROM globally accessible
     window.loadROM = loadROM;

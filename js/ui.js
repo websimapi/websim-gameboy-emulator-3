@@ -1,6 +1,6 @@
 // UI related functionality
 import { activateAudio, tryEnableAudio } from './audio.js';
-import { initGameboy, loadROM, setupTouchButton } from './gameboy-interface.js';
+import { initGameboy, loadROM, setupTouchButton, increaseSpeed, decreaseSpeed, resetSpeed } from './gameboy-interface.js';
 
 // References to UI elements
 let pauseBtn, soundBtn, soundNotification, overlay;
@@ -19,12 +19,20 @@ function setupUI(state) {
     
     const soundEnableBtn = document.getElementById('sound-enable-btn');
     const overlayEnableBtn = document.getElementById('overlay-enable-btn');
+    const speedUpBtn = document.getElementById('speedUpBtn');
+    const speedDownBtn = document.getElementById('speedDownBtn');
+    const speedResetBtn = document.getElementById('speedResetBtn');
 
     // Setup pause button
     pauseBtn.addEventListener('click', togglePause);
     
     // Setup sound button
     soundBtn.addEventListener('click', toggleSound);
+    
+    // Setup speed control buttons
+    if (speedUpBtn) speedUpBtn.addEventListener('click', increaseSpeed);
+    if (speedDownBtn) speedDownBtn.addEventListener('click', decreaseSpeed);
+    if (speedResetBtn) speedResetBtn.addEventListener('click', resetSpeed);
     
     // Setup touch controls
     setupTouchControls();
