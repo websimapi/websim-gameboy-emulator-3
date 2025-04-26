@@ -1,5 +1,5 @@
 // Interface with GameboyJS library
-import { checkAudioContext, tryEnableAudio } from './audio.js';
+import { getAudioContext, tryEnableAudio } from './audio.js';
 import { enableButtons, hideSoundNotification, hideOverlay } from './ui.js';
 
 // GameBoy instance
@@ -14,6 +14,12 @@ function initGameboy() {
 
     gameboy = new GameboyJS.Gameboy(canvas, options);
     window.gameboy = gameboy; // Make it globally accessible
+    
+    // Explicitly associate the AudioContext with the gameboy APU
+    const audioCtx = getAudioContext();
+    if (audioCtx && gameboy && gameboy.cpu && gameboy.cpu.apu) {
+        gameboy.cpu.apu.audioContext = audioCtx;
+    }
     
     hideOverlay();
     return gameboy;
@@ -31,15 +37,30 @@ function loadROM(file) {
     pauseBtn.textContent = 'Pause';
     enableButtons();
     
-    // Enable sound by default
-    if (gameboy) {
-        gameboy.setSoundEnabled(true);
+    // Make sure we have a handler for reading the file
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const romData = new Uint8Array(e.target.result);
         
-        // Check for audio context state after ROM is loaded
-        setTimeout(checkAudioContext, 100);
-    }
+        // Load the ROM data into the gameboy
+        if (gameboy && gameboy.cpu) {
+            gameboy.cpu.loadRom(romData);
+            gameboy.startRom({ data: romData });
+            
+            // Enable sound by default
+            gameboy.setSoundEnabled(true);
+            
+            // Check for audio context state after ROM is loaded
+            setTimeout(checkAudioContext, 100);
+        }
+    };
+    
+    reader.readAsArrayBuffer(file);
     
     window.wasRomLoaded = true;
+    
+    // Always try to enable audio when loading a ROM
+    tryEnableAudio();
 }
 
 // Setup touch controls

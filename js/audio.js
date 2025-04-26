@@ -1,47 +1,19 @@
 // Audio handling functionality
-import { initGameboy } from './gameboy-interface.js';
-import { hideOverlay, hideSoundNotification, showSoundNotification } from './ui.js';
-
 let audioContext = null;
 
 function initAudio() {
-    // Intentionally start without initializing the actual
-    // audio context - will be created on user interaction
+    // We'll create the actual context on user interaction to comply with browser policies
 }
 
 // Check if AudioContext is suspended and show UI accordingly
 function checkAudioContext() {
     try {
-        // Find any existing AudioContext in the window
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!audioContext) return;
         
-        // Look for the gameboy's AudioContext first
-        if (window.gameboy && window.gameboy.cpu && window.gameboy.cpu.apu && window.gameboy.cpu.apu.audioContext) {
-            audioContext = window.gameboy.cpu.apu.audioContext;
-            
-            if (audioContext.state === 'suspended') {
-                showSoundNotification();
-            }
-            return;
-        }
-        
-        // Fallback to searching window properties (safer approach)
-        const audioContexts = Object.keys(window)
-            .filter(key => {
-                try {
-                    return window[key] instanceof AudioContextClass;
-                } catch (e) {
-                    return false;
-                }
-            })
-            .map(key => window[key]);
-        
-        if (audioContexts.length > 0) {
-            audioContext = audioContexts[0];
-            
-            if (audioContext.state === 'suspended') {
-                showSoundNotification();
-            }
+        if (audioContext.state === 'suspended') {
+            showSoundNotification();
+        } else {
+            hideSoundNotification();
         }
     } catch (e) {
         console.error("Error checking AudioContext:", e);
@@ -68,35 +40,50 @@ function resumeAudioContext() {
 
 // Function to handle user interaction and enable audio
 function activateAudio() {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    
-    // Create a temporary AudioContext to ensure permission
-    const tempContext = new AudioContextClass();
-    tempContext.resume().then(() => {
-        // Permission granted, initialize the gameboy
-        if (!window.gameboy) {
-            initGameboy();
+    try {
+        if (!audioContext) {
+            // Create a new AudioContext (handles prefixes automatically)
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            audioContext = new AudioContextClass();
         }
         
-        // If a game was loaded but sound was suspended, reload it
-        const fileInput = document.getElementById('file');
-        if (window.wasRomLoaded && fileInput.files[0]) {
-            window.loadROM(fileInput.files[0]);
-        }
-        
-        hideSoundNotification();
-        hideOverlay();
-        tempContext.close();
-    }).catch(err => {
-        console.error('Failed to get audio permission:', err);
-    });
+        audioContext.resume().then(() => {
+            // Permission granted, initialize the gameboy
+            if (!window.gameboy) {
+                initGameboy();
+            }
+            
+            // If a game was loaded but sound was suspended, reload it
+            const fileInput = document.getElementById('file');
+            if (window.wasRomLoaded && fileInput.files[0]) {
+                window.loadROM(fileInput.files[0]);
+            }
+            
+            hideSoundNotification();
+            hideOverlay();
+        }).catch(err => {
+            console.error('Failed to get audio permission:', err);
+        });
+    } catch (err) {
+        console.error('Error creating AudioContext:', err);
+    }
 }
 
 // Try to enable audio on any user interaction
 function tryEnableAudio() {
-    if (audioContext && audioContext.state === 'suspended') {
+    if (!audioContext) {
+        activateAudio();
+        return;
+    }
+    
+    if (audioContext.state === 'suspended') {
         resumeAudioContext();
     }
+}
+
+// Get the current AudioContext for the gameboy initialization
+function getAudioContext() {
+    return audioContext;
 }
 
 export {
@@ -104,5 +91,6 @@ export {
     checkAudioContext,
     resumeAudioContext,
     activateAudio,
-    tryEnableAudio
+    tryEnableAudio,
+    getAudioContext
 };

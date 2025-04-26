@@ -1,6 +1,6 @@
 // Main application file
 import { setupUI, adjustCanvasZoom } from './ui.js';
-import { initAudio, tryEnableAudio } from './audio.js';
+import { initAudio, tryEnableAudio, activateAudio } from './audio.js';
 import { initGameboy, loadROM } from './gameboy-interface.js';
 
 // Application state
@@ -50,13 +50,13 @@ document.addEventListener('DOMContentLoaded', () => {
         tryEnableAudio();
     }, { passive: false });
 
-    // Initial setup - automatically initialize on first interaction
+    // Initial setup - trigger activation on first user interaction
     document.addEventListener('click', () => {
-        if (!gameboy) {
-            initGameboy();
-        }
-        tryEnableAudio();
+        activateAudio();
     }, { once: true });
+    
+    // Make loadROM globally accessible
+    window.loadROM = loadROM;
 });
 
 // Export functions for other modules
