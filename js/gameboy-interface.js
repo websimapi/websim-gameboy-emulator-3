@@ -8,6 +8,73 @@ let currentSpeed = 1.0;
 let errorCount = 0;
 let lastErrorTime = 0;
 
+// MBC3 cartridge clock handling patch
+// Apply a patch to the MBC3 implementation to handle clock operations
+function applyMBC3ClockPatch() {
+    if (GameboyJS && GameboyJS.MBC) {
+        // Only patch if not already patched
+        if (GameboyJS.MBC.clockPatched) return;
+        
+        // Override the MBC3 implementation to handle clock operations without exceptions
+        const originalMBC3 = GameboyJS.MBC.getMbcInstance;
+        GameboyJS.MBC.getMbcInstance = function(memory, type) {
+            const instance = originalMBC3.call(this, memory, type);
+            
+            // If this is an MBC3 cartridge, patch the manageWrite method
+            if (type >= 0x0F && type <= 0x13) {
+                const originalManageWrite = instance.manageWrite;
+                
+                // Override manageWrite to handle clock operations
+                instance.manageWrite = function(addr, value) {
+                    if ((addr & 0xF000) === 0x6000 || (addr & 0xF000) === 0x7000) {
+                        // Instead of throwing an exception, silently handle clock operations
+                        // This is a dummy implementation that doesn't actually track time
+                        this.clockLatch = value;
+                        return;
+                    }
+                    
+                    // Call the original method for all other cases
+                    return originalManageWrite.call(this, addr, value);
+                };
+                
+                // Add dummy clock registers (RTC registers in real MBC3)
+                instance.rtcRegisters = {
+                    seconds: 0,
+                    minutes: 0,
+                    hours: 0,
+                    days: 0,
+                    control: 0
+                };
+                
+                // Override readRam to handle RTC register reads
+                const originalReadRam = instance.readRam;
+                instance.readRam = function(addr) {
+                    // RTC registers are mapped to RAM addresses 0x08-0x0C
+                    if (this.ramBank >= 0x08 && this.ramBank <= 0x0C) {
+                        switch (this.ramBank) {
+                            case 0x08: return this.rtcRegisters.seconds;
+                            case 0x09: return this.rtcRegisters.minutes;
+                            case 0x0A: return this.rtcRegisters.hours;
+                            case 0x0B: return this.rtcRegisters.days & 0xFF;
+                            case 0x0C: return this.rtcRegisters.control;
+                            default: return 0;
+                        }
+                    }
+                    
+                    // Use original method for normal RAM access
+                    return originalReadRam.call(this, addr);
+                };
+                
+                console.log("MBC3 cartridge clock patch applied");
+            }
+            
+            return instance;
+        };
+        
+        GameboyJS.MBC.clockPatched = true;
+    }
+}
+
 // Initialize the gameboy with proper audio context handling
 function initGameboy() {
     const canvas = document.getElementById('canvas');
@@ -17,6 +84,9 @@ function initGameboy() {
 
     gameboy = new GameboyJS.Gameboy(canvas, options);
     window.gameboy = gameboy; // Make it globally accessible
+    
+    // Apply the MBC3 clock patch to handle cartridges with RTC
+    applyMBC3ClockPatch();
     
     // Explicitly associate the AudioContext with the gameboy APU
     const audioCtx = getAudioContext();
