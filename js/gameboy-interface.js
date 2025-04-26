@@ -13,13 +13,7 @@ function initGameboy() {
         zoom: 2
     };
 
-    // Make sure GameboyJS is defined before trying to use it
-    if (typeof window.GameboyJS === 'undefined') {
-        console.error('GameboyJS is not defined. Make sure gameboy.js is loaded properly.');
-        return null;
-    }
-
-    gameboy = new window.GameboyJS.Gameboy(canvas, options);
+    gameboy = new GameboyJS.Gameboy(canvas, options);
     window.gameboy = gameboy; // Make it globally accessible
     
     // Explicitly associate the AudioContext with the gameboy APU
