@@ -5,6 +5,8 @@ import { enableButtons, hideSoundNotification, hideOverlay } from './ui.js';
 // GameBoy instance
 let gameboy = null;
 let currentSpeed = 1.0;
+let errorCount = 0;
+let lastErrorTime = 0;
 
 // Initialize the gameboy with proper audio context handling
 function initGameboy() {
@@ -27,6 +29,83 @@ function initGameboy() {
     // Set initial speed
     setEmulationSpeed(currentSpeed);
     
+    // Add error handling wrapper for the frame function
+    if (gameboy.cpu) {
+        const originalFrame = gameboy.cpu.frame;
+        gameboy.cpu.frame = function() {
+            try {
+                if (!this.isPaused) {
+                    // Adjust timeout based on speed (higher speed = shorter timeout)
+                    const frequency = GameboyJS.Screen.physics.FREQUENCY * currentSpeed;
+                    this.nextFrameTimer = setTimeout(this.frame.bind(this), 1000 / frequency);
+                }
+                
+                try {
+                    var vblank = false;
+                    while (!vblank) {
+                        var oldInstrCount = this.clock.c;
+                        if (!this.isHalted) {
+                            var opcode = this.fetchOpcode();
+                            GameboyJS.opcodeMap[opcode](this);
+                            this.r.F &= 0xF0; // tmp fix
+
+                            if (this.enableSerial) {
+                                var instr = this.clock.c - oldInstrCount;
+                                this.clock.serial += instr;
+                                if (this.clock.serial >= 8 * this.SERIAL_INTERNAL_INSTR) {
+                                    this.endSerialTransfer();
+                                }
+                            }
+                        } else {
+                            this.clock.c += 4;
+                        }
+
+                        var elapsed = this.clock.c - oldInstrCount;
+                        vblank = this.gpu.update(elapsed);
+                        this.timer.update(elapsed);
+                        this.input.update();
+                        this.apu.update(elapsed);
+                        this.checkInterrupt();
+                    }
+                    this.clock.c = 0;
+                } catch (e) {
+                    // Handle specific known errors more gracefully
+                    const now = Date.now();
+                    if (now - lastErrorTime > 5000) {
+                        // Reset error count if it's been more than 5 seconds
+                        errorCount = 0;
+                    }
+                    
+                    lastErrorTime = now;
+                    errorCount++;
+                    
+                    if (errorCount > 10) {
+                        // If we're getting too many errors in a short time, 
+                        // we should pause the game to prevent browser freezing
+                        this.isPaused = true;
+                        console.error("Too many errors, pausing emulation", e);
+                        const errorElem = document.getElementById('error');
+                        if (errorElem) {
+                            errorElem.innerHTML = "Emulation paused due to repeated errors. The ROM may not be fully compatible.";
+                            errorElem.classList.add('show');
+                        }
+                        this.gameboy.setStatus('Emulation paused due to errors');
+                    } else {
+                        // For occasional errors, just log and continue
+                        console.warn("Recovered from error in CPU execution:", e);
+                    }
+                }
+            } catch (outerError) {
+                // Handle any errors in our error handling code
+                console.error("Critical error in emulation:", outerError);
+                if (this.gameboy && this.gameboy.handleException) {
+                    this.gameboy.handleException(outerError);
+                }
+                this.isPaused = true;
+            }
+        };
+    }
+    
     return gameboy;
 }
 
@@ -35,48 +114,6 @@ function setEmulationSpeed(speed) {
     if (!gameboy || !gameboy.cpu) return;
     
     currentSpeed = Math.max(0.5, Math.min(2.0, speed));
-    
-    // Override the frame timing in the CPU
-    const originalFrame = gameboy.cpu.frame;
-    gameboy.cpu.frame = function() {
-        if (!this.isPaused) {
-            // Adjust timeout based on speed (higher speed = shorter timeout)
-            const frequency = GameboyJS.Screen.physics.FREQUENCY * currentSpeed;
-            this.nextFrameTimer = setTimeout(this.frame.bind(this), 1000 / frequency);
-        }
-        
-        try {
-            var vblank = false;
-            while (!vblank) {
-                var oldInstrCount = this.clock.c;
-                if (!this.isHalted) {
-                    var opcode = this.fetchOpcode();
-                    GameboyJS.opcodeMap[opcode](this);
-                    this.r.F &= 0xF0; // tmp fix
-
-                    if (this.enableSerial) {
-                        var instr = this.clock.c - oldInstrCount;
-                        this.clock.serial += instr;
-                        if (this.clock.serial >= 8 * this.SERIAL_INTERNAL_INSTR) {
-                            this.endSerialTransfer();
-                        }
-                    }
-                } else {
-                    this.clock.c += 4;
-                }
-
-                var elapsed = this.clock.c - oldInstrCount;
-                vblank = this.gpu.update(elapsed);
-                this.timer.update(elapsed);
-                this.input.update();
-                this.apu.update(elapsed);
-                this.checkInterrupt();
-            }
-            this.clock.c = 0;
-        } catch (e) {
-            this.gameboy.handleException(e);
-        }
-    };
     
     // Update speed display
     const speedDisplay = document.getElementById('speedDisplay');
@@ -100,6 +137,14 @@ function resetSpeed() {
 
 // Custom ROM loading function
 function loadROM(file) {
+    // Reset error state
+    errorCount = 0;
+    lastErrorTime = 0;
+    const errorElem = document.getElementById('error');
+    if (errorElem) {
+        errorElem.classList.remove('show');
+    }
+    
     if (!gameboy) {
         // First-time initialization with user interaction
         initGameboy();
@@ -117,20 +162,38 @@ function loadROM(file) {
         
         // Load the ROM data into the gameboy
         if (gameboy && gameboy.cpu) {
-            gameboy.cpu.loadRom(romData);
-            gameboy.startRom({ data: romData });
-            
-            // Enable sound by default
-            gameboy.setSoundEnabled(true);
-            
-            // Check for audio context state after ROM is loaded
-            setTimeout(() => {
-                try {
-                    checkAudioContext();
-                } catch (e) {
-                    console.error("Error checking audio context:", e);
+            try {
+                gameboy.cpu.loadRom(romData);
+                gameboy.startRom({ data: romData });
+                
+                // Enable sound by default
+                gameboy.setSoundEnabled(true);
+                
+                // Check for audio context state after ROM is loaded
+                setTimeout(() => {
+                    try {
+                        checkAudioContext();
+                    } catch (e) {
+                        console.error("Error checking audio context:", e);
+                    }
+                }, 100);
+            } catch (e) {
+                console.error("Error loading ROM:", e);
+                const errorElem = document.getElementById('error');
+                if (errorElem) {
+                    errorElem.innerHTML = "Failed to load ROM: " + (e.message || "Unknown error");
+                    errorElem.classList.add('show');
                 }
-            }, 100);
+            }
+        }
+    };
+    
+    reader.onerror = function(e) {
+        console.error("File reading error:", e);
+        const errorElem = document.getElementById('error');
+        if (errorElem) {
+            errorElem.innerHTML = "Failed to read ROM file";
+            errorElem.classList.add('show');
         }
     };
     
@@ -145,6 +208,7 @@ function loadROM(file) {
 // Setup touch controls
 function setupTouchButton(buttonId, keyName) {
     const button = document.getElementById(buttonId);
+    if (!button) return;
     
     button.addEventListener('touchstart', (e) => {
         e.preventDefault();
