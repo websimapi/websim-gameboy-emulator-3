@@ -1,6 +1,6 @@
 // Interface with GameboyJS library
 import { getAudioContext, tryEnableAudio, checkAudioContext } from './audio.js';
-import { enableButtons, hideSoundNotification, hideOverlay, showError } from './ui.js';
+import { enableButtons, hideSoundNotification, hideOverlay } from './ui.js';
 
 // GameBoy instance
 let gameboy = null;
@@ -10,7 +10,9 @@ let currentSpeed = 1.0;
 function initGameboy() {
     const canvas = document.getElementById('canvas');
     const options = {
-        zoom: 2
+        zoom: 2,
+        // Enable RTC/clock support
+        enableClock: true
     };
 
     gameboy = new GameboyJS.Gameboy(canvas, options);
@@ -22,12 +24,169 @@ function initGameboy() {
         gameboy.cpu.apu.audioContext = audioCtx;
     }
     
+    // Initialize RTC support
+    initRTCSupport();
+    
     hideOverlay();
     
     // Set initial speed
     setEmulationSpeed(currentSpeed);
     
     return gameboy;
+}
+
+// Initialize Real-Time Clock support
+function initRTCSupport() {
+    if (!gameboy || !gameboy.cpu) return;
+    
+    // Override MBC handler if needed
+    const originalLoadRom = gameboy.cpu.loadRom;
+    gameboy.cpu.loadRom = function(romData) {
+        // Call original method
+        originalLoadRom.call(this, romData);
+        
+        // Check if ROM uses MBC3 with clock (typically 0x0F or 0x10)
+        const cartridgeType = romData[0x0147];
+        if (cartridgeType === 0x0F || cartridgeType === 0x10) {
+            console.log("Detected ROM with RTC support (MBC3+Timer)");
+            
+            // Initialize RTC registers if not already present
+            if (!this.rtcRegisters) {
+                this.rtcRegisters = {
+                    seconds: 0,
+                    minutes: 0,
+                    hours: 0,
+                    days: 0,
+                    control: 0,
+                    latchedSeconds: 0,
+                    latchedMinutes: 0,
+                    latchedHours: 0,
+                    latchedDays: 0,
+                    latchedControl: 0,
+                    lastUpdate: Date.now()
+                };
+                
+                // Override read/write handlers for RTC
+                const originalReadFromBus = this.readFromBus;
+                const originalWriteToBus = this.writeToBus;
+                
+                // Handle RTC register reads
+                this.readFromBus = function(address) {
+                    // Check if reading from RTC registers (0xA000-0xBFFF when selected)
+                    if (address >= 0xA000 && address <= 0xBFFF && this.mbc === 3 && this.currentRamBank >= 0x08 && this.currentRamBank <= 0x0C) {
+                        // Update RTC before reading
+                        this.updateRTC();
+                        
+                        // Return the appropriate RTC register value
+                        switch (this.currentRamBank) {
+                            case 0x08: return this.rtcRegisters.latchedSeconds;
+                            case 0x09: return this.rtcRegisters.latchedMinutes;
+                            case 0x0A: return this.rtcRegisters.latchedHours;
+                            case 0x0B: return this.rtcRegisters.latchedDays & 0xFF;
+                            case 0x0C: return this.rtcRegisters.latchedControl;
+                            default: return 0;
+                        }
+                    }
+                    
+                    // Otherwise use the original handler
+                    return originalReadFromBus.call(this, address);
+                };
+                
+                // Handle RTC register writes
+                this.writeToBus = function(address, value) {
+                    // Check if selecting an RTC register (writing to 0x4000-0x5FFF)
+                    if (address >= 0x4000 && address <= 0x5FFF && this.mbc === 3) {
+                        if (value >= 0x08 && value <= 0x0C) {
+                            this.currentRamBank = value;
+                            return;
+                        }
+                    }
+                    
+                    // Check if writing to RTC latch (0x6000-0x7FFF)
+                    if (address >= 0x6000 && address <= 0x7FFF && this.mbc === 3) {
+                        let latchData = 0;
+                        
+                        // Latch sequence requires 0->1 transition
+                        if (latchData === 0 && value === 1) {
+                            this.updateRTC();
+                            this.rtcRegisters.latchedSeconds = this.rtcRegisters.seconds;
+                            this.rtcRegisters.latchedMinutes = this.rtcRegisters.minutes;
+                            this.rtcRegisters.latchedHours = this.rtcRegisters.hours;
+                            this.rtcRegisters.latchedDays = this.rtcRegisters.days;
+                            this.rtcRegisters.latchedControl = this.rtcRegisters.control;
+                        }
+                        
+                        latchData = value;
+                        return;
+                    }
+                    
+                    // Check if writing to RTC registers (0xA000-0xBFFF when selected)
+                    if (address >= 0xA000 && address <= 0xBFFF && this.mbc === 3 && this.currentRamBank >= 0x08 && this.currentRamBank <= 0x0C) {
+                        switch (this.currentRamBank) {
+                            case 0x08: this.rtcRegisters.seconds = value % 60; break;
+                            case 0x09: this.rtcRegisters.minutes = value % 60; break;
+                            case 0x0A: this.rtcRegisters.hours = value % 24; break;
+                            case 0x0B: this.rtcRegisters.days = (this.rtcRegisters.days & 0x100) | value; break;
+                            case 0x0C: 
+                                // Control register - only lower bits are writable
+                                this.rtcRegisters.control = value & 0xC1;
+                                // Day counter high bit is in control register
+                                if (value & 0x01) this.rtcRegisters.days |= 0x100;
+                                else this.rtcRegisters.days &= 0xFF;
+                                break;
+                        }
+                        
+                        this.rtcRegisters.lastUpdate = Date.now();
+                        return;
+                    }
+                    
+                    // Otherwise use the original handler
+                    originalWriteToBus.call(this, address, value);
+                };
+                
+                // Add method to update RTC based on real elapsed time
+                this.updateRTC = function() {
+                    // Skip update if clock is halted
+                    if (this.rtcRegisters.control & 0x40) return;
+                    
+                    const now = Date.now();
+                    const elapsed = Math.floor((now - this.rtcRegisters.lastUpdate) / 1000);
+                    
+                    if (elapsed <= 0) return;
+                    
+                    // Update RTC registers
+                    this.rtcRegisters.lastUpdate = now;
+                    
+                    // Calculate new time values
+                    this.rtcRegisters.seconds += elapsed % 60;
+                    if (this.rtcRegisters.seconds >= 60) {
+                        this.rtcRegisters.seconds -= 60;
+                        this.rtcRegisters.minutes++;
+                    }
+                    
+                    this.rtcRegisters.minutes += Math.floor(elapsed / 60) % 60;
+                    if (this.rtcRegisters.minutes >= 60) {
+                        this.rtcRegisters.minutes -= 60;
+                        this.rtcRegisters.hours++;
+                    }
+                    
+                    this.rtcRegisters.hours += Math.floor(elapsed / 3600) % 24;
+                    if (this.rtcRegisters.hours >= 24) {
+                        this.rtcRegisters.hours -= 24;
+                        this.rtcRegisters.days++;
+                    }
+                    
+                    this.rtcRegisters.days += Math.floor(elapsed / 86400);
+                    
+                    // Handle overflow (512 days)
+                    if (this.rtcRegisters.days > 511) {
+                        this.rtcRegisters.days &= 0x1FF;
+                        this.rtcRegisters.control |= 0x80; // Set overflow bit
+                    }
+                };
+            }
+        }
+    };
 }
 
 // Set the emulation speed (0.5 to 2.0)
@@ -110,61 +269,27 @@ function loadROM(file) {
     pauseBtn.textContent = 'Pause';
     enableButtons();
     
-    // Reset any previous error messages
-    showError('', false);
-    
     // Make sure we have a handler for reading the file
     const reader = new FileReader();
     reader.onload = function(e) {
         const romData = new Uint8Array(e.target.result);
         
-        try {
-            // Load the ROM data into the gameboy
-            if (gameboy && gameboy.cpu) {
-                gameboy.cpu.loadRom(romData);
-                
-                // Add error handler for cartridge clock not supported
-                const originalStartRom = gameboy.startRom;
-                gameboy.startRom = function(options) {
-                    try {
-                        originalStartRom.call(this, options);
-                    } catch (err) {
-                        console.error("ROM loading error:", err);
-                        
-                        // Handle "cartridge clock not supported" error
-                        if (err.message && err.message.includes("cartridge clock not supported")) {
-                            showError(`This game uses a Real-Time Clock feature which is not fully supported. The game may still work but time-based events might not function correctly.`, true);
-                            
-                            // Continue with ROM loading if possible
-                            try {
-                                this.reset();
-                                this.cpu.loadRom(options.data);
-                                this.start();
-                            } catch (e) {
-                                console.error("Failed to recover from clock error:", e);
-                                showError(`Failed to load the ROM: ${e.message}`, true);
-                            }
-                        } else {
-                            showError(`Failed to load the ROM: ${err.message}`, true);
-                        }
-                    }
-                };
-                
-                gameboy.startRom({ data: romData });
-                gameboy.setSoundEnabled(true);
-                
-                // Check for audio context state after ROM is loaded
-                setTimeout(() => {
-                    try {
-                        checkAudioContext();
-                    } catch (e) {
-                        console.error("Error checking audio context:", e);
-                    }
-                }, 100);
-            }
-        } catch (err) {
-            console.error("Error loading ROM:", err);
-            showError(`Error loading ROM: ${err.message}`, true);
+        // Load the ROM data into the gameboy
+        if (gameboy && gameboy.cpu) {
+            gameboy.cpu.loadRom(romData);
+            gameboy.startRom({ data: romData });
+            
+            // Enable sound by default
+            gameboy.setSoundEnabled(true);
+            
+            // Check for audio context state after ROM is loaded
+            setTimeout(() => {
+                try {
+                    checkAudioContext();
+                } catch (e) {
+                    console.error("Error checking audio context:", e);
+                }
+            }, 100);
         }
     };
     

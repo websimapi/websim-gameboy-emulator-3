@@ -6,7 +6,6 @@ import { initGameboy, loadROM, setupTouchButton, increaseSpeed, decreaseSpeed, r
 let pauseBtn, soundBtn, soundNotification, overlay;
 let fileInput;
 let appState = {};
-let errorElem;
 
 function setupUI(state) {
     appState = state;
@@ -17,7 +16,6 @@ function setupUI(state) {
     soundNotification = document.getElementById('sound-notification');
     overlay = document.getElementById('audio-permission-overlay');
     fileInput = document.getElementById('file');
-    errorElem = document.getElementById('error');
     
     const soundEnableBtn = document.getElementById('sound-enable-btn');
     const overlayEnableBtn = document.getElementById('overlay-enable-btn');
@@ -135,23 +133,6 @@ function adjustCanvasZoom() {
     }
 }
 
-function showError(message, show) {
-    if (!errorElem) {
-        errorElem = document.getElementById('error');
-        if (!errorElem) return;
-    }
-    
-    errorElem.textContent = message;
-    
-    if (show) {
-        errorElem.classList.remove('hide');
-        errorElem.classList.add('show');
-    } else {
-        errorElem.classList.add('hide');
-        errorElem.classList.remove('show');
-    }
-}
-
 export {
     setupUI,
     enableButtons,
@@ -159,6 +140,5 @@ export {
     hideSoundNotification,
     showOverlay,
     hideOverlay,
-    adjustCanvasZoom,
-    showError
+    adjustCanvasZoom
 };
