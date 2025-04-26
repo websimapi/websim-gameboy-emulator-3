@@ -1,4 +1,7 @@
 // Audio handling functionality
+import { hideOverlay, hideSoundNotification } from './ui.js';
+import { initGameboy } from './gameboy-interface.js';
+
 let audioContext = null;
 
 function initAudio() {
