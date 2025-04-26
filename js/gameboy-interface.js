@@ -1,5 +1,5 @@
 // Interface with GameboyJS library
-import { getAudioContext, tryEnableAudio } from './audio.js';
+import { getAudioContext, tryEnableAudio, checkAudioContext } from './audio.js';
 import { enableButtons, hideSoundNotification, hideOverlay } from './ui.js';
 
 // GameBoy instance
@@ -51,7 +51,13 @@ function loadROM(file) {
             gameboy.setSoundEnabled(true);
             
             // Check for audio context state after ROM is loaded
-            setTimeout(checkAudioContext, 100);
+            setTimeout(() => {
+                try {
+                    checkAudioContext();
+                } catch (e) {
+                    console.error("Error checking audio context:", e);
+                }
+            }, 100);
         }
     };
     
