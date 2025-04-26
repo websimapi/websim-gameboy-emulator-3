@@ -11,9 +11,16 @@
             margin: 0;
             padding: 20px;
             display: flex;
-            flex-direction: column;
-            align-items: center;
+            justify-content: center;
             min-height: 100vh;
+        }
+        .main-container {
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            gap: 20px;
+            max-width: 1200px;
+            width: 100%;
         }
         .gameboy-container {
             background-color: #8ba5ff;
@@ -24,6 +31,52 @@
             flex-direction: column;
             align-items: center;
             margin-bottom: 20px;
+            flex: 1;
+        }
+        .gallery-container {
+            background-color: #f8f8f8;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            width: 250px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .gallery-title {
+            text-align: center;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .rom-list {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+        .rom-item {
+            background-color: #e0e8ff;
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-left: 4px solid #8ba5ff;
+        }
+        .rom-item:hover {
+            background-color: #d0d8ff;
+            transform: translateX(3px);
+        }
+        .rom-item:active {
+            background-color: #c0c8ff;
+            transform: translateX(5px);
+        }
+        .rom-item-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .empty-gallery {
+            text-align: center;
+            color: #888;
+            padding: 20px 0;
         }
         .screen-container {
             background-color: #9bbc0f;
@@ -161,64 +214,78 @@
             transform: translateY(-1px);
             box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
         }
+        
+        @media (max-width: 900px) {
+            .main-container {
+                flex-direction: column;
+            }
+            .gallery-container {
+                width: 100%;
+                max-height: 300px;
+            }
+        }
     </style>
 </head>
 <body>
     <a href="https://github.com/juchi/gameboy.js" target="_blank" class="credit-btn">Credit to juchi</a>
-    <div class="gameboy-container">
-        <h1>GameBoy Emulator</h1>
-        
-        <div class="status-container">
-            <div id="status">Load a ROM to start</div>
-            <div id="game-name"></div>
-            <div id="error" class="hide"></div>
-        </div>
-        
-        <div class="file-container">
-            <input type="file" id="file" accept=".gb,.gbc,.rom" />
-            <button id="pauseBtn" class="btn" disabled>Pause</button>
-            <button id="soundBtn" class="btn">Sound: On</button>
-        </div>
-        
-        <div class="screen-container">
-            <canvas id="canvas" width="160" height="144"></canvas>
-        </div>
-        
-        <div class="controls">
-            <div class="buttons">
-                <div class="dpad">
+    
+    <div class="main-container">
+        <div class="gameboy-container">
+            <h1>GameBoy Emulator</h1>
+            
+            <div class="status-container">
+                <div id="status">Load a ROM to start</div>
+                <div id="game-name"></div>
+                <div id="error" class="hide"></div>
+            </div>
+            
+            <div class="file-container">
+                <input type="file" id="file" accept=".gb,.gbc,.rom" />
+                <button id="pauseBtn" class="btn" disabled>Pause</button>
+                <button id="soundBtn" class="btn">Sound: On</button>
+            </div>
+            
+            <div class="screen-container">
+                <canvas id="canvas" width="160" height="144"></canvas>
+            </div>
+            
+            <div class="controls">
+                <div class="buttons">
+                    <div class="dpad">
+                        <div></div>
+                        <button class="dpad-btn" id="upBtn">↑</button>
+                        <div></div>
+                        <button class="dpad-btn" id="leftBtn">←</button>
+                        <div></div>
+                        <button class="dpad-btn" id="rightBtn">→</button>
+                        <div></div>
+                        <button class="dpad-btn" id="downBtn">↓</button>
+                        <div></div>
+                    </div>
                     <div></div>
-                    <button class="dpad-btn" id="upBtn">↑</button>
-                    <div></div>
-                    <button class="dpad-btn" id="leftBtn">←</button>
-                    <div></div>
-                    <button class="dpad-btn" id="rightBtn">→</button>
-                    <div></div>
-                    <button class="dpad-btn" id="downBtn">↓</button>
-                    <div></div>
+                    <div class="action-btns">
+                        <button class="action-btn b" id="bBtn">B</button>
+                        <button class="action-btn a" id="aBtn">A</button>
+                    </div>
                 </div>
-                <div></div>
-                <div class="action-btns">
-                    <button class="action-btn b" id="bBtn">B</button>
-                    <button class="action-btn a" id="aBtn">A</button>
+                <div class="select-start">
+                    <button id="selectBtn">SELECT</button>
+                    <button id="startBtn">START</button>
                 </div>
             </div>
-            <div class="select-start">
-                <button id="selectBtn">SELECT</button>
-                <button id="startBtn">START</button>
+        </div>
+        
+        <div class="gallery-container">
+            <h2 class="gallery-title">ROM Gallery</h2>
+            <div id="emptyGallery" class="empty-gallery">
+                Load ROMs to see them here
             </div>
+            <ul id="romList" class="rom-list">
+                <!-- ROM items will be added here dynamically -->
+            </ul>
         </div>
     </div>
     
-    <div class="instructions">
-        <h2>Keyboard Controls</h2>
-        <p>Arrow Keys - Direction</p>
-        <p>G - A Button</p>
-        <p>B - B Button</p>
-        <p>H - Start</p>
-        <p>N - Select</p>
-    </div>
-
     <script src="gameboy.js"></script>
     <script>
         // Initialize the emulator
@@ -232,10 +299,78 @@
         // References to UI elements
         const pauseBtn = document.getElementById('pauseBtn');
         const soundBtn = document.getElementById('soundBtn');
+        const romList = document.getElementById('romList');
+        const emptyGallery = document.getElementById('emptyGallery');
         
         // Game state
         let isPaused = false;
         let isSoundEnabled = true;
+        let loadedRoms = {};
+        
+        // Load ROMs from localStorage if available
+        function loadSavedRoms() {
+            try {
+                const savedRoms = localStorage.getItem('gbRoms');
+                if (savedRoms) {
+                    loadedRoms = JSON.parse(savedRoms);
+                    updateRomGallery();
+                }
+            } catch (e) {
+                console.error('Failed to load saved ROMs:', e);
+            }
+        }
+        
+        // Save ROMs to localStorage
+        function saveRoms() {
+            try {
+                localStorage.setItem('gbRoms', JSON.stringify(loadedRoms));
+            } catch (e) {
+                console.error('Failed to save ROMs:', e);
+            }
+        }
+        
+        // Update the ROM gallery UI
+        function updateRomGallery() {
+            romList.innerHTML = '';
+            
+            const romEntries = Object.entries(loadedRoms);
+            
+            if (romEntries.length === 0) {
+                emptyGallery.style.display = 'block';
+                return;
+            }
+            
+            emptyGallery.style.display = 'none';
+            
+            romEntries.forEach(([id, rom]) => {
+                const listItem = document.createElement('li');
+                listItem.className = 'rom-item';
+                listItem.dataset.romId = id;
+                
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'rom-item-name';
+                nameDiv.textContent = rom.name;
+                
+                listItem.appendChild(nameDiv);
+                romList.appendChild(listItem);
+                
+                // Add click handler to load the ROM
+                listItem.addEventListener('click', () => {
+                    loadRomFromGallery(id);
+                });
+            });
+        }
+        
+        // Load a ROM from the gallery
+        function loadRomFromGallery(romId) {
+            const rom = loadedRoms[romId];
+            if (!rom || !rom.data) {
+                showError('ROM data is missing or corrupted');
+                return;
+            }
+            
+            loadRomData(rom.name, rom.data);
+        }
         
         // Set up event handlers
         pauseBtn.addEventListener('click', () => {
@@ -249,6 +384,56 @@
             gameboy.setSoundEnabled(isSoundEnabled);
             soundBtn.textContent = `Sound: ${isSoundEnabled ? 'On' : 'Off'}`;
         });
+        
+        // Show error message
+        function showError(message) {
+            const errorEl = document.getElementById('error');
+            errorEl.textContent = message;
+            errorEl.classList.remove('hide');
+            
+            setTimeout(() => {
+                errorEl.classList.add('hide');
+            }, 5000);
+        }
+        
+        // Load ROM data
+        function loadRomData(name, data) {
+            try {
+                // Reset pause state when loading a new ROM
+                isPaused = false;
+                pauseBtn.textContent = 'Pause';
+                enableButtons();
+                
+                // Make sure sound is initialized and enabled when loading a ROM
+                // This is key to fixing the sound initialization issue
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext) {
+                    // Create a short sound to "unlock" audio on browsers
+                    const audioContext = new AudioContext();
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    gainNode.gain.value = 0; // Mute it
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    oscillator.start(0);
+                    oscillator.stop(0.1); // Stop after a short time
+                }
+                
+                // Reset emulator state
+                gameboy.cpu.reset();
+                gameboy.cpu.loadRom(data);
+                
+                // Enable sound and start the game
+                gameboy.setSoundEnabled(isSoundEnabled);
+                document.getElementById('status').textContent = 'Game Running:';
+                document.getElementById('game-name').textContent = name;
+                gameboy.cpu.run();
+                
+            } catch (e) {
+                showError('Failed to load ROM: ' + e.message);
+                console.error(e);
+            }
+        }
         
         // Touch controls
         function setupTouchButton(buttonId, keyName) {
@@ -298,24 +483,39 @@
         const fileInput = document.getElementById('file');
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
-            if (file) {
-                // Reset pause state when loading a new ROM
-                isPaused = false;
-                pauseBtn.textContent = 'Pause';
-                enableButtons();
-                
-                // Ensure sound is properly initialized when loading a ROM
-                if (isSoundEnabled) {
-                    gameboy.setSoundEnabled(true);
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const romData = new Uint8Array(event.target.result);
+                    const romName = file.name.replace(/\.[^/.]+$/, ""); // Remove file extension
                     
-                    // Force sound context to be active by handling user interaction
-                    const resumeAudio = function() {
-                        gameboy.setSoundEnabled(isSoundEnabled);
-                        document.removeEventListener('click', resumeAudio);
+                    // Add ROM to gallery
+                    const romId = Date.now().toString();
+                    loadedRoms[romId] = {
+                        name: romName,
+                        data: Array.from(romData) // Convert to regular array for storage
                     };
-                    document.addEventListener('click', resumeAudio, {once: true});
+                    
+                    // Save and update gallery
+                    saveRoms();
+                    updateRomGallery();
+                    
+                    // Load the ROM
+                    loadRomData(romName, romData);
+                    
+                } catch (error) {
+                    showError('Error processing ROM file: ' + error.message);
+                    console.error(error);
                 }
-            }
+            };
+            
+            reader.onerror = () => {
+                showError('Failed to read the ROM file');
+            };
+            
+            reader.readAsArrayBuffer(file);
         });
         
         // Adjust canvas zoom based on screen size
@@ -349,6 +549,9 @@
                 e.preventDefault();
             }
         }, { passive: false });
+        
+        // Load saved ROMs on startup
+        loadSavedRoms();
     </script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
